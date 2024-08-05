@@ -4,21 +4,23 @@ namespace App\Controller;
 
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\HttpFoundation\Request;
 use Doctrine\ORM\EntityManagerInterface;
 use App\Repository\ConferenceRepository;
 use App\Repository\CommentRepository;
+use App\Message\CommentMessage;
 use App\Entity\Conference;
 use App\Form\CommentType;
 use App\Entity\Comment;
-use App\SpamChecker;
 
 class ConferenceController extends AbstractController
 {
     public function __construct(
-        private EntityManagerInterface $entityManager
+        private EntityManagerInterface $entityManager,
+        private MessageBusInterface $bus
     ) {}
 
     #[Route('/', name: 'homepage')]
@@ -33,7 +35,6 @@ class ConferenceController extends AbstractController
     public function show(
         Request $request,
         Conference $conference,
-        SpamChecker $spamChecker,
         CommentRepository $commentRepository,
         #[Autowire('%photo_dir%')] string $photo_dir,
     ): Response
@@ -53,6 +54,7 @@ class ConferenceController extends AbstractController
             }
 
             $this->entityManager->persist($comment);
+            $this->entityManager->flush();
 
             $context = [
                 'user_ip' => $request->getClientIp(),
@@ -61,11 +63,7 @@ class ConferenceController extends AbstractController
                 'permalink' => $request->getUri(),
             ];
 
-            if (2 === $spamChecker->getSpamScore($comment, $context)) {
-                throw new \RuntimeException('Blatant spam, go away!');
-            }
-
-            $this->entityManager->flush();
+            $this->bus->dispatch(new CommentMessage($comment->getId(), $context));
 
             return $this->redirectToRoute('conference', ['slug' => $conference->getSlug()]);
         }
