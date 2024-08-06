@@ -2,9 +2,12 @@
 
 namespace App\MessageHandler;
 
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Workflow\WorkflowInterface;
+use Symfony\Bridge\Twig\Mime\NotificationEmail;
+use Symfony\Component\Mailer\MailerInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use App\Repository\CommentRepository;
 use App\Message\CommentMessage;
@@ -15,12 +18,14 @@ use App\SpamChecker;
 class CommentMessageHandler
 {
     public function __construct(
+        #[Autowire('%admin_email%')] private string $admin_email,
         private WorkflowInterface $commentStateMachine,
         private EntityManagerInterface $entityManager,
         private CommentRepository $commentRepository,
         private ?LoggerInterface $logger = null,
         private SpamChecker $spamChecker,
         private MessageBusInterface $bus,
+        private MailerInterface $mailer,
     ) {}
 
     public function __invoke(CommentMessage $message)
@@ -45,8 +50,13 @@ class CommentMessageHandler
 
         } elseif ($this->commentStateMachine->can($comment, 'publish') || $this->commentStateMachine->can($comment, 'publish_ham')) {
             
-+            $this->commentStateMachine->apply($comment, $this->commentStateMachine->can($comment, 'publish') ? 'publish' : 'publish_ham');
-+            $this->entityManager->flush();
+            $this->mailer->send((new NotificationEmail())
+                ->subject('New comment posted')
+                ->htmlTemplate('emails/comment_notification.html.twig')
+                ->from($this->admin_email)
+                ->to($this->admin_email)
+                ->context(['comment' => $comment])
+            );
 
          } elseif ($this->logger) {
             $this->logger->debug('Dropping comment message', ['comment' => $comment->getId(), 'state' => $comment->getState()]);
