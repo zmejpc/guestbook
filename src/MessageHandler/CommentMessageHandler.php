@@ -5,9 +5,9 @@ namespace App\MessageHandler;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Notifier\NotifierInterface;
 use Symfony\Component\Workflow\WorkflowInterface;
-use Symfony\Bridge\Twig\Mime\NotificationEmail;
-use Symfony\Component\Mailer\MailerInterface;
+use App\Notification\CommentReviewNotification;
 use Doctrine\ORM\EntityManagerInterface;
 use App\Repository\CommentRepository;
 use App\Message\CommentMessage;
@@ -19,16 +19,15 @@ use App\SpamChecker;
 class CommentMessageHandler
 {
     public function __construct(
-        #[Autowire('%admin_email%')] private string $admin_email,
         #[Autowire('%photo_dir%')] private string $photo_dir,
         private WorkflowInterface $commentStateMachine,
         private EntityManagerInterface $entityManager,
         private CommentRepository $commentRepository,
         private ?LoggerInterface $logger = null,
         private ImageOptimizer $imageOptimizer,
+        private NotifierInterface $notifier,
         private SpamChecker $spamChecker,
         private MessageBusInterface $bus,
-        private MailerInterface $mailer,
     ) {}
 
     public function __invoke(CommentMessage $message)
@@ -53,13 +52,7 @@ class CommentMessageHandler
 
         } elseif ($this->commentStateMachine->can($comment, 'publish') || $this->commentStateMachine->can($comment, 'publish_ham')) {
             
-            $this->mailer->send((new NotificationEmail())
-                ->subject('New comment posted')
-                ->htmlTemplate('emails/comment_notification.html.twig')
-                ->from($this->admin_email)
-                ->to($this->admin_email)
-                ->context(['comment' => $comment])
-            );
+            $this->notifier->send(new CommentReviewNotification($comment), ...$this->notifier->getAdminRecipients());
 
          } elseif ($this->commentStateMachine->can($comment, 'optimize')) {
             if ($comment->getPhotoFilename()) {
