@@ -12,6 +12,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use App\Repository\CommentRepository;
 use App\Message\CommentMessage;
 use Psr\Log\LoggerInterface;
+use App\ImageOptimizer;
 use App\SpamChecker;
 
 #[AsMessageHandler]
@@ -19,10 +20,12 @@ class CommentMessageHandler
 {
     public function __construct(
         #[Autowire('%admin_email%')] private string $admin_email,
+        #[Autowire('%photo_dir%')] private string $photo_dir,
         private WorkflowInterface $commentStateMachine,
         private EntityManagerInterface $entityManager,
         private CommentRepository $commentRepository,
         private ?LoggerInterface $logger = null,
+        private ImageOptimizer $imageOptimizer,
         private SpamChecker $spamChecker,
         private MessageBusInterface $bus,
         private MailerInterface $mailer,
@@ -58,6 +61,12 @@ class CommentMessageHandler
                 ->context(['comment' => $comment])
             );
 
+         } elseif ($this->commentStateMachine->can($comment, 'optimize')) {
+            if ($comment->getPhotoFilename()) {
+                $this->imageOptimizer->resize($this->photo_dir.'/'.$comment->getPhotoFilename());
+            }
+            $this->commentStateMachine->apply($comment, 'optimize');
+            $this->entityManager->flush();
          } elseif ($this->logger) {
             $this->logger->debug('Dropping comment message', ['comment' => $comment->getId(), 'state' => $comment->getState()]);
          }
