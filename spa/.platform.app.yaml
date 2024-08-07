@@ -2,10 +2,6 @@ name: spa
 
 type: nodejs:18
 
-dependencies:
-    nodejs:
-        "node-build": "^0.1.0"
-
 size: S
 
 build:
@@ -28,4 +24,4 @@ hooks:
 
         curl -fs https://get.symfony.com/cloud/configurator | bash
 
-        NODE_VERSION=18 node-build
+        NODE_VERSION=18 node build
