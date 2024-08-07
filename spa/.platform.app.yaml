@@ -2,6 +2,10 @@ name: spa
 
 type: nodejs:18
 
+dependencies:
+    nodejs:
+        "node-build": "^0.1.0"
+
 size: S
 
 build:
